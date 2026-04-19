@@ -1,0 +1,42 @@
+# Contrôle de version
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Environnement virtuel uv
+.venv/
+
+# Base de données SQLite (montée via PVC en production)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Vidéos (trop volumineuses pour l'image, montées via PVC)
+static/videos/*
+!static/videos/.gitkeep
+
+# Documentation
+*.md
+*.rst
+
+# Fichiers de déploiement (pas nécessaires dans l'image)
+k8s-deployment.yaml
+docker-compose*.yml
+
+# Éditeurs et IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

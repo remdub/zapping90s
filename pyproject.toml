@@ -1,0 +1,17 @@
+[project]
+name = "zapping"
+version = "0.1.0"
+description = "Zapping interactif 90s pour teambuilding"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "python-multipart>=0.0.20",
+    "qrcode>=7.0",
+]
+
+[tool.uv]
+# Ce projet est une application web, pas un paquet Python à installer.
+# package = false évite que uv/hatchling essaie de construire une wheel.
+package = false
+dev-dependencies = []

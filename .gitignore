@@ -1,0 +1,7 @@
+*.txt
+*.sh
+*.mp4
+.claude
+.venv
+__pycache__
+data/zapping.db

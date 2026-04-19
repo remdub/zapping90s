@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#000000">
+    <title>ZAPPING 90s // ACCESS TERMINAL</title>
+    <style>
+        /* ── Reset & base DOS ──────────────────────────────────────────────── */
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --green:       #00ff00;
+            --green-dim:   #00aa00;
+            --green-ghost: #00ff0044;
+            --red:         #ff3333;
+            --yellow:      #ffff00;
+            --bg:          #000000;
+            --font:        'Courier New', Courier, monospace;
+        }
+
+        html, body {
+            background: var(--bg);
+            color: var(--green);
+            font-family: var(--font);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            touch-action: manipulation;
+        }
+
+        /* ── Conteneur principal ───────────────────────────────────────────── */
+        .terminal {
+            width: 100%;
+            max-width: 440px;
+        }
+
+        /* ── Écrans (un seul visible à la fois) ────────────────────────────── */
+        .screen {
+            display: none;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .screen.active {
+            display: flex;
+        }
+
+        /* ── Éléments communs ──────────────────────────────────────────────── */
+        .header {
+            font-size: 0.85em;
+            color: var(--green-dim);
+            letter-spacing: 0.1em;
+        }
+
+        .divider {
+            border: none;
+            border-top: 1px solid var(--green-ghost);
+        }
+
+        .prompt-line {
+            font-size: 1.05em;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            gap: 0.4em;
+            flex-wrap: wrap;
+        }
+
+        .cursor {
+            display: inline-block;
+            animation: blink 1s step-start infinite;
+        }
+
+        /* ── Input texte (prénom) ──────────────────────────────────────────── */
+        input#name-input {
+            width: 100%;
+            background: var(--bg);
+            color: var(--green);
+            border: 1px solid var(--green);
+            border-radius: 0;
+            font-family: var(--font);
+            font-size: 1.1em;
+            padding: 10px 12px;
+            outline: none;
+            caret-color: var(--green);
+            letter-spacing: 0.05em;
+        }
+        input#name-input::placeholder {
+            color: #00ff0044;
+        }
+        input#name-input:focus {
+            box-shadow: 0 0 8px var(--green);
+        }
+
+        /* ── Bouton principal ──────────────────────────────────────────────── */
+        .btn-primary {
+            width: 100%;
+            background: var(--bg);
+            color: var(--green);
+            border: 2px solid var(--green);
+            border-radius: 0;
+            font-family: var(--font);
+            font-size: 1.05em;
+            padding: 13px;
+            cursor: pointer;
+            letter-spacing: 0.3em;
+            transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+            text-transform: uppercase;
+        }
+        .btn-primary:hover:not(:disabled),
+        .btn-primary:focus:not(:disabled) {
+            background: var(--green);
+            color: var(--bg);
+            box-shadow: 0 0 15px var(--green);
+            outline: none;
+        }
+        .btn-primary:active:not(:disabled) {
+            background: var(--green-dim);
+            color: var(--bg);
+        }
+        .btn-primary:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        /* ── Bouton retry (rouge) ─────────────────────────────────────────── */
+        .btn-retry {
+            width: 100%;
+            background: var(--bg);
+            color: var(--red);
+            border: 2px solid var(--red);
+            border-radius: 0;
+            font-family: var(--font);
+            font-size: 1em;
+            padding: 12px;
+            cursor: pointer;
+            letter-spacing: 0.2em;
+            transition: background 0.15s, color 0.15s;
+        }
+        .btn-retry:hover {
+            background: var(--red);
+            color: var(--bg);
+        }
+
+        /* ── QUIZ : questions et réponses ─────────────────────────────────── */
+        #quiz-progress {
+            font-size: 0.82em;
+            color: var(--green-dim);
+            letter-spacing: 0.2em;
+        }
+        #quiz-progress-bar {
+            font-size: 0.9em;
+            letter-spacing: 0.1em;
+        }
+        #quiz-question {
+            font-size: 1em;
+            line-height: 1.6;
+            color: var(--yellow);
+            letter-spacing: 0.03em;
+        }
+        .answer-btn {
+            width: 100%;
+            background: var(--bg);
+            color: var(--green);
+            border: 1px solid var(--green-ghost);
+            border-radius: 0;
+            font-family: var(--font);
+            font-size: 0.88em;
+            padding: 11px 14px;
+            cursor: pointer;
+            text-align: left;
+            line-height: 1.5;
+            letter-spacing: 0.02em;
+            transition: background 0.12s, border-color 0.12s, color 0.12s;
+        }
+        .answer-btn:hover,
+        .answer-btn:focus {
+            background: #001a00;
+            border-color: var(--green);
+            color: var(--green);
+            outline: none;
+        }
+        .answer-btn:active {
+            background: var(--green);
+            color: var(--bg);
+        }
+        .answer-btn .answer-letter {
+            color: var(--green-dim);
+            margin-right: 0.5em;
+        }
+        #quiz-answers {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        /* ── LOADING : barre ASCII ─────────────────────────────────────────── */
+        #screen-loading .bar-wrapper {
+            border: 1px solid var(--green);
+            padding: 6px 10px;
+            font-size: 1.1em;
+            letter-spacing: -0.02em;
+            overflow: hidden;
+        }
+        #progress-bar {
+            color: var(--green);
+            white-space: nowrap;
+        }
+        #progress-percent {
+            color: var(--green-dim);
+            font-size: 0.9em;
+            text-align: right;
+        }
+
+        /* ── CHOICE : sélection vidéo ─────────────────────────────────────── */
+        #choice-category {
+            font-size: 1.3em;
+            color: var(--yellow);
+            text-shadow: 0 0 10px var(--yellow);
+            letter-spacing: 0.15em;
+            text-align: center;
+        }
+        #choice-subtitle {
+            font-size: 0.82em;
+            color: var(--green-dim);
+            letter-spacing: 0.1em;
+        }
+        #choice-videos {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .video-btn {
+            width: 100%;
+            background: var(--bg);
+            color: var(--green);
+            border: 2px solid var(--green-ghost);
+            border-radius: 0;
+            font-family: var(--font);
+            font-size: 0.95em;
+            padding: 14px 16px;
+            cursor: pointer;
+            text-align: left;
+            letter-spacing: 0.05em;
+            transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+        }
+        .video-btn:hover,
+        .video-btn:focus {
+            background: #001a00;
+            border-color: var(--green);
+            box-shadow: 0 0 10px var(--green-ghost);
+            outline: none;
+        }
+        .video-btn:active {
+            background: var(--green);
+            color: var(--bg);
+        }
+        .video-btn .video-num {
+            color: var(--green-dim);
+            margin-right: 0.6em;
+        }
+
+        /* ── WAITING ──────────────────────────────────────────────────────── */
+        #screen-waiting .msg-main {
+            color: var(--yellow);
+            font-size: 1em;
+            letter-spacing: 0.05em;
+        }
+        #screen-waiting .msg-sub {
+            color: #ffffff44;
+            font-size: 0.82em;
+        }
+        #screen-waiting .blink-indicator {
+            color: var(--green);
+            animation: blink 1.2s step-start infinite;
+        }
+
+        /* ── ERROR ────────────────────────────────────────────────────────── */
+        #screen-error .error-header {
+            color: var(--red);
+            text-shadow: 0 0 8px var(--red);
+            font-size: 1em;
+            letter-spacing: 0.15em;
+        }
+        #error-msg {
+            color: var(--red);
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+
+        /* ── Animations ───────────────────────────────────────────────────── */
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+<div class="terminal">
+
+    <!-- ── INTRO : saisie du prénom ─────────────────────────────────────── -->
+    <div class="screen active" id="screen-intro">
+        <div class="header">C:\ZAPPING\&gt; SYSTEM READY — v2.0.0</div>
+        <hr class="divider">
+        <div class="prompt-line">
+            C:\&gt;&nbsp;IDENTIFICATION REQUISE<span class="cursor">_</span>
+        </div>
+        <input type="text" id="name-input" placeholder="Ton prénom..." maxlength="24" autocomplete="off" autocorrect="off" spellcheck="false">
+        <button class="btn-primary" id="start-btn">[ COMMENCER LE QUIZ ]</button>
+    </div>
+
+    <!-- ── QUIZ : questions ──────────────────────────────────────────────── -->
+    <div class="screen" id="screen-quiz">
+        <div class="header">C:\ZAPPING\&gt; PROFILAGE 90s EN COURS...</div>
+        <hr class="divider">
+        <div id="quiz-progress">QUESTION <span id="quiz-step">1</span> / 3</div>
+        <div id="quiz-progress-bar">[█░░]</div>
+        <div id="quiz-question"></div>
+        <div id="quiz-answers"></div>
+    </div>
+
+    <!-- ── LOADING : barre de progression ASCII ──────────────────────────── -->
+    <div class="screen" id="screen-loading">
+        <div class="header">C:\ZAPPING\&gt; ANALYSE DU PROFIL...</div>
+        <hr class="divider">
+        <div class="bar-wrapper">
+            <div id="progress-bar">[░░░░░░░░░░░░░░░░░░░░]</div>
+        </div>
+        <div id="progress-percent">0%</div>
+    </div>
+
+    <!-- ── CHOICE : sélection de la vidéo ───────────────────────────────── -->
+    <div class="screen" id="screen-choice">
+        <div class="header">C:\ZAPPING\&gt; CATÉGORIE DÉTERMINÉE</div>
+        <hr class="divider">
+        <div id="choice-category"></div>
+        <div id="choice-subtitle">CHOISISSEZ VOTRE VIDÉO :</div>
+        <div id="choice-videos"></div>
+    </div>
+
+    <!-- ── WAITING : séquence en cours ──────────────────────────────────── -->
+    <div class="screen" id="screen-waiting">
+        <div class="header">C:\ZAPPING\&gt; ACCESS GRANTED</div>
+        <hr class="divider">
+        <div class="msg-main">Votre sélection est à l'écran !</div>
+        <div class="msg-sub">La saisie sera réactivée à la fin de la séquence.</div>
+        <div class="blink-indicator">▌ TRANSMISSION ACTIVE</div>
+    </div>
+
+    <!-- ── ERROR : message d'erreur ──────────────────────────────────────── -->
+    <div class="screen" id="screen-error">
+        <div class="error-header">C:\ZAPPING\&gt; *** ERREUR SYSTÈME ***</div>
+        <hr class="divider">
+        <div id="error-msg">Une erreur est survenue.</div>
+        <button class="btn-retry" id="retry-btn">[ RETRY ]</button>
+    </div>
+
+</div>
+
+<script src="/static/mobile.js"></script>
+</body>
+</html>

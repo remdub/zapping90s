@@ -1,0 +1,239 @@
+# ── Manifeste Kubernetes — Zapping 90s ───────────────────────────────────────
+#
+# Ressources créées :
+#   - Namespace    : zapping
+#   - PVC          : zapping-data-pvc    (SQLite DB — /app/data)
+#   - PVC          : zapping-videos-pvc  (fichiers .mp4 — /app/static/videos)
+#   - Deployment   : zapping             (replicas: 1, stratégie Recreate)
+#   - Service      : zapping-svc         (ClusterIP — exposer via Ingress)
+#
+# Prérequis :
+#   - Un StorageClass disponible dans le cluster (modifier storageClassName si besoin)
+#   - Remplacer "registry.example.com/zapping:latest" par votre registre réel
+#   - Ajouter un Ingress ou modifier le Service en NodePort selon votre infrastructure
+#
+# Déploiement :
+#   kubectl apply -f k8s-deployment.yaml
+#   kubectl rollout status deployment/zapping -n zapping
+#
+# Copie des vidéos sur le PVC (une fois le pod Running) :
+#   kubectl cp /chemin/local/video.mp4 zapping/<pod-name>:/app/static/videos/
+#   kubectl rollout restart deployment/zapping -n zapping
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: zapping
+  labels:
+    app.kubernetes.io/name: zapping
+
+---
+# PVC pour la base de données SQLite (lecture+écriture, un seul nœud)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: zapping-data-pvc
+  namespace: zapping
+  labels:
+    app.kubernetes.io/name:      zapping
+    app.kubernetes.io/component: database
+spec:
+  accessModes:
+    - ReadWriteOnce          # SQLite ne supporte pas les accès concurrents multi-nœuds
+  resources:
+    requests:
+      storage: 1Gi
+  # Décommentez et adaptez si votre cluster requiert un StorageClass spécifique :
+  # storageClassName: standard
+
+---
+# PVC pour les fichiers vidéo .mp4
+# ReadWriteMany permet de pré-charger les vidéos depuis un pod ou un job séparé
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: zapping-videos-pvc
+  namespace: zapping
+  labels:
+    app.kubernetes.io/name:      zapping
+    app.kubernetes.io/component: videos
+spec:
+  accessModes:
+    - ReadWriteMany            # Permet lecture + copie depuis l'extérieur
+  resources:
+    requests:
+      storage: 20Gi
+  # storageClassName: nfs-client  # Exemple pour NFS (supporte ReadWriteMany)
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zapping
+  namespace: zapping
+  labels:
+    app.kubernetes.io/name:    zapping
+    app.kubernetes.io/version: "0.1.0"
+spec:
+  # ⚠️  CRITIQUE : replicas DOIT rester à 1.
+  # L'état de lecture (IDLE/PLAYING) est stocké en mémoire dans le processus.
+  # Plusieurs réplicas provoqueraient des états incohérents entre les pods.
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: zapping
+
+  # Recreate plutôt que RollingUpdate :
+  # Évite que deux pods accèdent simultanément au fichier SQLite en écriture.
+  strategy:
+    type: Recreate
+
+  template:
+    metadata:
+      labels:
+        app: zapping
+        app.kubernetes.io/name: zapping
+
+    spec:
+      # ── Contexte de sécurité du Pod ──────────────────────────────────────
+      securityContext:
+        runAsNonRoot: true
+        runAsUser:    1001       # uid de l'utilisateur appuser (défini dans le Dockerfile)
+        runAsGroup:   1001
+        fsGroup:      1001       # Les fichiers des PVCs seront owned par le groupe 1001
+
+      containers:
+        - name:  zapping
+          image: registry.example.com/zapping:latest
+          # Toujours tirer l'image en production ; utiliser IfNotPresent en dev
+          imagePullPolicy: Always
+
+          ports:
+            - name:          http
+              containerPort: 8000
+              protocol:      TCP
+
+          # ── Variables d'environnement ───────────────────────────────────
+          env:
+            - name:  DB_PATH
+              value: /app/data/zapping.db
+
+          # ── Ressources ─────────────────────────────────────────────────
+          resources:
+            requests:
+              cpu:    "100m"
+              memory: "128Mi"
+            limits:
+              cpu:    "500m"
+              memory: "512Mi"
+
+          # ── Probes de santé ─────────────────────────────────────────────
+          # GET /api/status retourne 200 dès que l'app est prête
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds:       30
+            timeoutSeconds:       5
+            failureThreshold:     3
+
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: 8000
+            initialDelaySeconds:  5
+            periodSeconds:       10
+            timeoutSeconds:       3
+            failureThreshold:     3
+
+          # ── Montages de volumes ─────────────────────────────────────────
+          volumeMounts:
+            - name:      data-volume
+              mountPath: /app/data
+              # Pas de readOnly ici — SQLite doit pouvoir écrire
+
+            - name:      videos-volume
+              mountPath: /app/static/videos
+              readOnly:  true   # L'app ne modifie jamais les vidéos
+
+          # ── Contexte de sécurité du conteneur ──────────────────────────
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem:   false  # uv crée des fichiers temporaires au démarrage
+            capabilities:
+              drop:
+                - ALL
+
+      # ── Volumes ──────────────────────────────────────────────────────────
+      volumes:
+        - name: data-volume
+          persistentVolumeClaim:
+            claimName: zapping-data-pvc
+
+        - name: videos-volume
+          persistentVolumeClaim:
+            claimName: zapping-videos-pvc
+
+      # Redémarrage en cas d'erreur (comportement par défaut)
+      restartPolicy: Always
+
+---
+# Service interne ClusterIP
+# Pour exposer publiquement, ajoutez un Ingress ou changez type: en NodePort/LoadBalancer
+apiVersion: v1
+kind: Service
+metadata:
+  name: zapping-svc
+  namespace: zapping
+  labels:
+    app.kubernetes.io/name: zapping
+spec:
+  selector:
+    app: zapping
+  type: ClusterIP
+  ports:
+    - name:       http
+      port:       80
+      targetPort: 8000
+      protocol:   TCP
+
+---
+# ── Exemple d'Ingress (à adapter selon votre contrôleur) ─────────────────────
+# Décommentez et adaptez ce bloc pour exposer l'application sur un nom de domaine.
+#
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: zapping-ingress
+#   namespace: zapping
+#   annotations:
+#     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+#     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+#     # Les WebSockets nécessitent ces annotations avec nginx-ingress :
+#     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+#     nginx.ingress.kubernetes.io/configuration-snippet: |
+#       proxy_set_header Upgrade $http_upgrade;
+#       proxy_set_header Connection "upgrade";
+# spec:
+#   ingressClassName: nginx
+#   rules:
+#     - host: zapping.exemple.com
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: zapping-svc
+#                 port:
+#                   number: 80
+#   # TLS (Let's Encrypt via cert-manager) :
+#   # tls:
+#   #   - hosts:
+#   #       - zapping.exemple.com
+#   #     secretName: zapping-tls

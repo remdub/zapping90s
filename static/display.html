@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZAPPING 90s — ÉCRAN PRINCIPAL</title>
+    <style>
+        /* ── Reset & base ─────────────────────────────────────────────────── */
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            color: #00ff00;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            user-select: none;
+        }
+
+        /* ── Canvas Matrix (fond, toujours présent) ───────────────────────── */
+        #matrix-canvas {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+        }
+
+        /* ── Overlay générique ────────────────────────────────────────────── */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+        .overlay.active {
+            display: flex;
+        }
+
+        /* ── IDLE : titre + QR code ───────────────────────────────────────── */
+        #overlay-idle {
+            z-index: 10;
+            gap: 5vh;
+            background: transparent;
+        }
+
+        #idle-title {
+            font-size: clamp(2rem, 4vw, 5rem);
+            color: #00ff00;
+            letter-spacing: 0.4em;
+            text-shadow: 0 0 30px #00ff00, 0 0 60px #00ff4444;
+            animation: flicker 5s infinite;
+            text-align: center;
+        }
+
+        #idle-subtitle {
+            font-size: clamp(0.8rem, 1.5vw, 1.4rem);
+            color: #00ff0077;
+            letter-spacing: 0.2em;
+            animation: flicker 7s infinite reverse;
+        }
+
+        #qrcode-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5vh;
+        }
+
+        /* QR code généré server-side via /api/qrcode */
+        #qrcode-img {
+            width:  clamp(160px, 18vw, 280px);
+            height: clamp(160px, 18vw, 280px);
+            border: 3px solid #00ff00;
+            box-shadow: 0 0 20px #00ff00, 0 0 40px #00ff0033;
+            display: block;
+        }
+
+        #qr-label {
+            font-size: clamp(0.7rem, 1.2vw, 1.1rem);
+            color: #00ff0099;
+            letter-spacing: 0.3em;
+        }
+
+        /* ── CONNECTING : texte glitch rouge ─────────────────────────────── */
+        #overlay-connecting {
+            z-index: 20;
+            background: #000;
+            gap: 4vh;
+        }
+
+        #connecting-line1 {
+            font-size: clamp(1.5rem, 3.5vw, 4rem);
+            color: #ff0000;
+            text-shadow: 0 0 20px #ff0000;
+            animation: glitch 0.2s infinite;
+            text-align: center;
+            letter-spacing: 0.1em;
+        }
+
+        #connecting-line2 {
+            font-size: clamp(1rem, 2vw, 2.5rem);
+            color: #ff000088;
+            animation: glitch 0.35s infinite reverse;
+            letter-spacing: 0.2em;
+        }
+
+        #connecting-dots {
+            font-size: clamp(1.2rem, 2.5vw, 3rem);
+            color: #ff0000;
+            letter-spacing: 0.5em;
+        }
+
+        /* ── REVEAL : carte d'identité rétro ─────────────────────────────── */
+        #overlay-reveal {
+            z-index: 30;
+            background: #00000eee;
+        }
+
+        #id-card {
+            border: 3px solid #00ff00;
+            padding: clamp(30px, 5vw, 80px) clamp(40px, 7vw, 120px);
+            text-align: center;
+            box-shadow:
+                0 0 60px #00ff00,
+                0 0 120px #00ff0022,
+                inset 0 0 40px #00ff0011;
+            animation: card-appear 0.3s ease-out;
+        }
+
+        #card-header {
+            font-size: clamp(0.7rem, 1.2vw, 1.1rem);
+            color: #00ff0088;
+            letter-spacing: 0.8em;
+            margin-bottom: 1.5vh;
+        }
+
+        #card-divider {
+            border: none;
+            border-top: 1px solid #00ff0044;
+            margin: 1.5vh 0;
+        }
+
+        #card-label-access {
+            font-size: clamp(0.8rem, 1.3vw, 1.2rem);
+            color: #00ff0077;
+            letter-spacing: 0.5em;
+            margin-bottom: 1vh;
+        }
+
+        #card-name {
+            font-size: clamp(2.5rem, 7vw, 8rem);
+            color: #00ff00;
+            text-shadow: 0 0 30px #00ff00, 0 0 60px #00ff0044;
+            letter-spacing: 0.1em;
+            min-height: 1.2em;
+        }
+
+        #card-category {
+            font-size: clamp(1rem, 2vw, 2rem);
+            color: #ffff00;
+            text-shadow: 0 0 15px #ffff00;
+            margin-top: 2vh;
+            letter-spacing: 0.3em;
+        }
+
+        #card-footer {
+            font-size: clamp(0.6rem, 0.9vw, 0.85rem);
+            color: #00ff0044;
+            margin-top: 2.5vh;
+            letter-spacing: 0.3em;
+        }
+
+        /* ── PLAYING : vidéo plein écran + crédit ─────────────────────────── */
+        #overlay-playing {
+            z-index: 40;
+            background: #000;
+        }
+
+        #main-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        #video-credit {
+            position: absolute;
+            bottom: 3vh;
+            right: 3vw;
+            background: rgba(0, 0, 0, 0.75);
+            color: #fff;
+            font-size: clamp(0.8rem, 1.5vw, 1.5rem);
+            padding: 0.8em 1.5em;
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            text-shadow: 0 0 10px #00ff00;
+            letter-spacing: 0.1em;
+        }
+
+        #video-credit span {
+            color: #00ff00;
+        }
+
+        /* ── Overlay scanlines CRT (par-dessus tout) ──────────────────────── */
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            pointer-events: none;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0, 0, 0, 0.06) 2px,
+                rgba(0, 0, 0, 0.06) 4px
+            );
+        }
+
+        /* ── Animations ───────────────────────────────────────────────────── */
+        @keyframes flicker {
+            0%, 89%, 91%, 93%, 95%, 100% { opacity: 1; }
+            90%  { opacity: 0.4; }
+            92%  { opacity: 0.9; }
+            94%  { opacity: 0.15; }
+        }
+
+        @keyframes glitch {
+            0%   { transform: translate(0, 0);      color: #ff0000; }
+            15%  { transform: translate(-4px, 1px); color: #ff6600; }
+            30%  { transform: translate(4px, -2px); color: #ff0044; }
+            45%  { transform: translate(-2px, 2px); color: #ff0000; }
+            60%  { transform: translate(3px, -1px); color: #cc0000; }
+            75%  { transform: translate(-3px, 1px); color: #ff2200; }
+            100% { transform: translate(0, 0);      color: #ff0000; }
+        }
+
+        @keyframes card-appear {
+            from { opacity: 0; transform: scaleX(0.95) scaleY(0.9); }
+            to   { opacity: 1; transform: scaleX(1)    scaleY(1); }
+        }
+
+        /* ── BOOT : écran de démarrage (clic requis pour déverrouiller l'autoplay) ── */
+        #overlay-boot {
+            z-index: 160;
+            background: #000;
+            cursor: pointer;
+            gap: 6vh;
+        }
+        #boot-title {
+            font-size: clamp(2.5rem, 5vw, 7rem);
+            color: #00ff00;
+            letter-spacing: 0.4em;
+            text-shadow: 0 0 40px #00ff00, 0 0 80px #00ff0033;
+            animation: flicker 3s infinite;
+            text-align: center;
+        }
+        #boot-prompt {
+            font-size: clamp(0.9rem, 1.8vw, 2rem);
+            color: #00ff0077;
+            letter-spacing: 0.5em;
+            animation: flicker 2s 1s infinite reverse;
+        }
+        #boot-version {
+            position: absolute;
+            bottom: 3vh;
+            right: 3vw;
+            font-size: clamp(0.6rem, 0.9vw, 0.9rem);
+            color: #00ff0033;
+            letter-spacing: 0.2em;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Couche 0 : animation Matrix (canvas) -->
+    <canvas id="matrix-canvas"></canvas>
+
+    <!-- Couche BOOT : clic requis pour déverrouiller l'autoplay navigateur -->
+    <div id="overlay-boot" class="overlay active">
+        <div id="boot-title">ZAPPING 90s</div>
+        <div id="boot-prompt">[ CLIQUEZ POUR DÉMARRER ]</div>
+        <div id="boot-version">SYSTÈME v1.0 — PRÊT</div>
+    </div>
+
+    <!-- Couche 1 : IDLE -->
+    <div id="overlay-idle" class="overlay">
+        <div id="idle-title">* ZAPPING 90s *</div>
+        <div id="idle-subtitle">INITIALISATION SYSTÈME TERMINÉE</div>
+        <div id="qrcode-wrapper">
+            <!-- QR code généré server-side, pointe vers /mobile -->
+            <img id="qrcode-img" src="/api/qrcode" alt="QR Code">
+            <div id="qr-label">SCANNER POUR ACCÉDER AU SYSTÈME</div>
+        </div>
+    </div>
+
+    <!-- Couche 2 : CONNECTING -->
+    <div id="overlay-connecting" class="overlay">
+        <div id="connecting-line1">ATTENTION :</div>
+        <div id="connecting-line1b" style="font-size:clamp(1.2rem,2.8vw,3.5rem);color:#ff0000;text-shadow:0 0 20px #ff0000;animation:glitch 0.25s infinite;text-align:center;letter-spacing:0.08em;">TENTATIVE DE CONNEXION DÉTECTÉE</div>
+        <div id="connecting-line2">IDENTIFICATION EN COURS...</div>
+        <div id="connecting-dots">▓▓▓░░░░░</div>
+    </div>
+
+    <!-- Couche 3 : REVEAL -->
+    <div id="overlay-reveal" class="overlay">
+        <div id="id-card">
+            <div id="card-header">SYSTÈME D'IDENTIFICATION ZAPPING</div>
+            <hr id="card-divider">
+            <div id="card-label-access">ACCÈS AUTORISÉ</div>
+            <div id="card-name"></div>
+            <div id="card-category"></div>
+            <hr id="card-divider" style="margin-top:2.5vh;">
+            <div id="card-footer">CATÉGORIE MUSICALE ASSIGNÉE — SÉLECTION EN COURS</div>
+        </div>
+    </div>
+
+    <!-- Couche 4 : PLAYING -->
+    <div id="overlay-playing" class="overlay">
+        <video id="main-video" autoplay playsinline></video>
+        <div id="video-credit">
+            Sélection pour : <span id="credit-name"></span>
+        </div>
+    </div>
+
+    <script src="/static/display.js"></script>
+</body>
+</html>
