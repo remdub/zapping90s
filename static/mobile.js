@@ -25,11 +25,12 @@ const ANSWER_LETTERS      = ['A', 'B', 'C', 'D'];
 
 // ── État de la session ───────────────────────────────────────────────────────
 
-let userName      = '';          // prénom saisi à l'INTRO
-let questions     = [];          // 3 questions chargées depuis /api/quiz
-let answers       = [];          // catégories choisies (ex: ["cinema__", "geek__", "sport__"])
-let quizStep      = 0;           // index de la question courante (0, 1, 2)
-let quizResult    = null;        // { category, label, videos } retourné par /api/quiz/result
+let userName         = '';       // prénom saisi à l'INTRO
+let questions        = [];       // 3 questions chargées depuis /api/quiz
+let answers          = [];       // catégories choisies (ex: ["cinema__", "geek__", "sport__"])
+let quizStep         = 0;        // index de la question courante (0, 1, 2)
+let quizResult       = null;     // { category, label, videos } retourné par /api/quiz/result
+let myQueuePosition  = 0;        // position dans la file d'attente (0 = pas en file)
 
 
 // ── Gestion des écrans ───────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ const screens = {
     loading: document.getElementById('screen-loading'),
     choice:  document.getElementById('screen-choice'),
     waiting: document.getElementById('screen-waiting'),
+    queued:  document.getElementById('screen-queued'),
     error:   document.getElementById('screen-error'),
 };
 
@@ -145,14 +147,6 @@ async function submitQuiz() {
             body:    JSON.stringify({ name: userName, answers }),
         });
 
-        if (res.status === 409) {
-            showError(
-                'Une vidéo est déjà en cours de lecture.\n' +
-                'Veuillez patienter la fin de la séquence.'
-            );
-            return;
-        }
-
         if (!res.ok) {
             const body = await res.json().catch(() => ({}));
             showError(body.detail || `Erreur serveur (${res.status}). Réessayez.`);
@@ -207,11 +201,11 @@ async function onVideoSelected(filename) {
             }),
         });
 
-        if (res.status === 409) {
-            showError(
-                'Une vidéo est déjà en cours de lecture.\n' +
-                'Veuillez patienter la fin de la séquence.'
-            );
+        if (res.status === 202) {
+            const body = await res.json();
+            myQueuePosition = body.position;
+            document.getElementById('queue-position').textContent = myQueuePosition;
+            showScreen('queued');
             return;
         }
 
@@ -233,10 +227,11 @@ async function onVideoSelected(filename) {
 // ── Réinitialisation pour une nouvelle session ───────────────────────────────
 
 function resetSession() {
-    userName   = '';
-    answers    = [];
-    quizStep   = 0;
-    quizResult = null;
+    userName        = '';
+    answers         = [];
+    quizStep        = 0;
+    quizResult      = null;
+    myQueuePosition = 0;
     document.getElementById('name-input').value = '';
     // Recharge les questions pour varier les variantes
     loadQuestions();
@@ -289,10 +284,26 @@ function connectWS() {
         let data;
         try { data = JSON.parse(event.data); } catch { return; }
 
-        // La séquence est terminée → retour à l'INTRO
+        // La séquence est terminée → retour à l'INTRO (aussi depuis l'état QUEUED via /api/reset)
         if (data.type === 'idle') {
-            if (screens.waiting.classList.contains('active')) {
+            if (screens.waiting.classList.contains('active') || screens.queued.classList.contains('active')) {
                 resetSession();
+            }
+        }
+
+        // Mise à jour de position dans la file d'attente
+        if (data.type === 'queue_update' && screens.queued.classList.contains('active')) {
+            const pos = data.queue.indexOf(userName) + 1;
+            if (pos > 0) {
+                myQueuePosition = pos;
+                document.getElementById('queue-position').textContent = pos;
+            }
+        }
+
+        // C'est notre tour : transition QUEUED → WAITING
+        if (data.type === 'play' && screens.queued.classList.contains('active')) {
+            if (data.user === userName) {
+                showScreen('waiting');
             }
         }
     };

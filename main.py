@@ -32,7 +32,7 @@ import qrcode
 import qrcode.image.svg
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -531,6 +531,7 @@ class ServerState:
     current_video:    str | None = None
     current_category: str | None = None
     video_queue:      list[str] = field(default_factory=list)
+    waiting_queue:    list[dict] = field(default_factory=list)
 
 
 state = ServerState()
@@ -639,30 +640,55 @@ async def api_categories() -> list[str]:
 async def api_status() -> dict:
     """Retourne l'état courant. Utilisé aussi comme healthcheck Kubernetes."""
     return {
-        "status":   state.status,
-        "user":     state.current_user,
-        "video":    state.current_video,
-        "category": state.current_category,
+        "status":       state.status,
+        "user":         state.current_user,
+        "video":        state.current_video,
+        "category":     state.current_category,
+        "queue_length": len(state.waiting_queue),
     }
+
+
+MAX_QUEUE = 50
 
 
 @app.post("/api/play", summary="Déclenche la lecture de la vidéo sélectionnée")
 async def api_play(req: PlayRequest) -> dict:
     """
     Logique principale :
-      1. Refuse (409) si une lecture est déjà en cours.
+      1. Si une lecture est en cours : met la demande en file d'attente (202).
       2. Vérifie que la vidéo existe en base et la marque comme jouée.
       3. Construit la file pub + vidéo principale.
       4. Met à jour l'état serveur et diffuse l'événement via WebSocket.
 
     Returns:
-        {"status": "ok", "video": "...", "category": "..."}
+        {"status": "ok", "video": "...", "category": "..."}          (200 — lecture immédiate)
+        {"status": "queued", "position": N}                          (202 — mise en file)
     Raises:
         404 si la vidéo est introuvable en base.
-        409 si une vidéo est déjà en cours de lecture.
+        429 si la file d'attente est pleine (max 50).
     """
     if state.status == "PLAYING":
-        raise HTTPException(status_code=409, detail="Une vidéo est déjà en cours de lecture.")
+        if len(state.waiting_queue) >= MAX_QUEUE:
+            raise HTTPException(status_code=429, detail="File d'attente pleine (max 50), réessayez plus tard.")
+
+        conn = get_conn()
+        try:
+            row = conn.execute(
+                "SELECT id FROM videos WHERE filename = ?", (req.video,)
+            ).fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail=f"Vidéo '{req.video}' introuvable.")
+            conn.execute("UPDATE videos SET played = 1 WHERE id = ?", (row["id"],))
+            conn.commit()
+        finally:
+            conn.close()
+
+        state.waiting_queue.append({"name": req.name, "category": req.category, "video": req.video})
+        position = len(state.waiting_queue)
+        await manager.broadcast({"type": "queue_update", "queue": [q["name"] for q in state.waiting_queue]})
+        return JSONResponse(status_code=202, content={"status": "queued", "position": position})
+
+    # ── Lecture immédiate ─────────────────────────────────────────────────────
 
     # Marque la vidéo choisie comme jouée
     conn = get_conn()
@@ -716,6 +742,7 @@ async def api_reset() -> dict:
     state.current_video    = None
     state.current_category = None
     state.video_queue      = []
+    state.waiting_queue    = []
 
     await manager.broadcast({"type": "idle"})
 
@@ -773,6 +800,38 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                     next_video          = state.video_queue.pop(0)
                     state.current_video = next_video
                     await manager.broadcast({"type": "next_video", "video": next_video})
+                elif state.waiting_queue:
+                    next_req   = state.waiting_queue.pop(0)
+                    pub_before = pick_video("pub")
+                    pub_after  = pick_video("pub")
+                    next_queue: list[str] = []
+                    next_queue.append("pub-intro.mp4")
+                    if pub_before:
+                        next_queue.append(pub_before["filename"])
+                    next_queue.append("pub-fermeture.mp4")
+                    next_queue.append(next_req["video"])
+                    next_queue.append("pub-intro.mp4")
+                    if pub_after:
+                        next_queue.append(pub_after["filename"])
+                    next_queue.append("pub-fermeture.mp4")
+
+                    state.status           = "PLAYING"
+                    state.current_user     = next_req["name"]
+                    state.current_video    = next_queue[0]
+                    state.current_category = next_req["category"]
+                    state.video_queue      = next_queue[1:]
+
+                    await manager.broadcast({
+                        "type":     "play",
+                        "user":     next_req["name"],
+                        "category": next_req["category"],
+                        "video":    next_queue[0],
+                    })
+                    if state.waiting_queue:
+                        await manager.broadcast({
+                            "type":  "queue_update",
+                            "queue": [q["name"] for q in state.waiting_queue],
+                        })
                 else:
                     state.status           = "IDLE"
                     state.current_user     = None

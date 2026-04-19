@@ -281,6 +281,23 @@
             animation: blink 1.2s step-start infinite;
         }
 
+        /* ── QUEUED ──────────────────────────────────────────────────────── */
+        #screen-queued .queued-position {
+            font-size: 2em;
+            color: var(--yellow);
+            text-shadow: 0 0 10px var(--yellow);
+            letter-spacing: 0.2em;
+            text-align: center;
+        }
+        #screen-queued .msg-sub {
+            color: #ffffff44;
+            font-size: 0.82em;
+        }
+        #screen-queued .blink-indicator {
+            color: var(--green);
+            animation: blink 1.2s step-start infinite;
+        }
+
         /* ── ERROR ────────────────────────────────────────────────────────── */
         #screen-error .error-header {
             color: var(--red);
@@ -350,6 +367,15 @@
         <div class="msg-main">Votre sélection est à l'écran !</div>
         <div class="msg-sub">La saisie sera réactivée à la fin de la séquence.</div>
         <div class="blink-indicator">▌ TRANSMISSION ACTIVE</div>
+    </div>
+
+    <!-- ── QUEUED : en file d'attente ──────────────────────────────────── -->
+    <div class="screen" id="screen-queued">
+        <div class="header">C:\ZAPPING\&gt; FILE D'ATTENTE</div>
+        <hr class="divider">
+        <div class="queued-position">POSITION #<span id="queue-position">1</span></div>
+        <div class="msg-sub">Votre vidéo sera lancée automatiquement.</div>
+        <div class="blink-indicator">▌ EN ATTENTE...</div>
     </div>
 
     <!-- ── ERROR : message d'erreur ──────────────────────────────────────── -->
