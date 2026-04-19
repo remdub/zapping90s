@@ -68,6 +68,7 @@ let transitionTimer     = null;  // timer pour les transitions automatiques
 let dotAnimTimer        = null;  // timer pour l'animation des points
 let endedFallbackTimer  = null;  // sécurité : retour IDLE si le serveur ne répond pas
 let allCategories       = [];    // chargé depuis /api/users au BOOT (slot machine)
+let audioCtx            = null;  // Web Audio API, initialisé au clic BOOT
 
 
 // ── Machine à états ─────────────────────────────────────────────────────────
@@ -158,6 +159,39 @@ function animateDots() {
 }
 
 
+// ── Sons slot machine ────────────────────────────────────────────────────────
+
+function playTick() {
+    if (!audioCtx) return;
+    const buf  = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * 0.025), audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    const src  = audioCtx.createBufferSource();
+    src.buffer = buf;
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.025);
+    src.connect(gain);
+    gain.connect(audioCtx.destination);
+    src.start();
+}
+
+function playLand() {
+    if (!audioCtx) return;
+    const osc  = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(150, audioCtx.currentTime + 0.3);
+    gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.4);
+}
+
+
 // ── Effet typewriter ────────────────────────────────────────────────────────
 
 /**
@@ -242,6 +276,7 @@ function slotMachineCategory(element, categories, target, onComplete) {
             clearTimeout(flashTimer);
             element.style.color = '#ffffff';
             flashTimer = setTimeout(() => { element.style.color = ''; }, 55);
+            playTick();
         }
 
         if (progress < 1) {
@@ -251,6 +286,7 @@ function slotMachineCategory(element, categories, target, onComplete) {
             element.textContent  = fmt(target);
             element.style.color  = '';
             element.style.filter = '';
+            playLand();
             blinkAndPause();
         }
     }
@@ -444,6 +480,7 @@ setInterval(async () => {
 // considère la connexion comme issue d'une interaction utilisateur.
 
 overlays.boot.addEventListener('click', () => {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     setState(STATES.IDLE);
     connectWS();
     // Charge les catégories pour le slot machine REVEAL
