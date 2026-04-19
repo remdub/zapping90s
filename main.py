@@ -43,7 +43,8 @@ BASE_DIR   = Path(__file__).parent
 STATIC_DIR = BASE_DIR / "static"
 VIDEOS_DIR = STATIC_DIR / "videos"
 DATA_DIR   = BASE_DIR / "data"
-DB_PATH    = Path(os.environ.get("DB_PATH", str(DATA_DIR / "zapping.db")))
+DB_PATH       = Path(os.environ.get("DB_PATH", str(DATA_DIR / "zapping.db")))
+DISPLAY_TOKEN = os.environ.get("DISPLAY_TOKEN", "")
 
 
 # ── Banque de questions du quiz ───────────────────────────────────────────────
@@ -575,7 +576,14 @@ class PlayRequest(BaseModel):
 
 @app.get("/", include_in_schema=False)
 async def root() -> RedirectResponse:
-    return RedirectResponse(url="/static/display.html")
+    return RedirectResponse(url="/mobile")
+
+
+@app.get("/display/{token}", include_in_schema=False, response_model=None)
+async def display_presenter(token: str) -> FileResponse | RedirectResponse:
+    if DISPLAY_TOKEN and token != DISPLAY_TOKEN:
+        return RedirectResponse(url="/mobile")
+    return FileResponse(STATIC_DIR / "display.html")
 
 
 @app.get("/mobile", include_in_schema=False)

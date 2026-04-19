@@ -47,3 +47,4 @@ There are no tests.
 |----------|---------|---------|
 | `DB_PATH` | `data/zapping.db` | SQLite path (override for K8s PVC) |
 | `RESET_PLAYED` | _(absent)_ | Si défini, remet tous les `played` à 0 au démarrage |
+| `DISPLAY_TOKEN` | _(absent)_ | Si défini, seul `/display/<token>` donne accès à l'interface présentateur |
