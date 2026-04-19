@@ -46,3 +46,4 @@ There are no tests.
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `DB_PATH` | `data/zapping.db` | SQLite path (override for K8s PVC) |
+| `RESET_PLAYED` | _(absent)_ | Si défini, remet tous les `played` à 0 au démarrage |

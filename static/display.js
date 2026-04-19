@@ -389,6 +389,7 @@ function connectWS() {
 
         if (data.type === 'play') {
             // 1ère vidéo de la file → animation complète CONNECTING → REVEAL → PLAYING
+            clearTimeout(endedFallbackTimer);
             setState(STATES.CONNECTING, data);
         } else if (data.type === 'next_video') {
             // Vidéo suivante dans la file → changement direct de src, pas d'animation

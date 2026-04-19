@@ -369,12 +369,13 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
-def startup_init_db() -> None:
+def startup_init_db(reset: bool = False) -> None:
     """
     Initialisation au démarrage :
       1. Crée le dossier data/ et la table videos si inexistants.
       2. Scanne static/videos/ et insère les .mp4 manquants (INSERT OR IGNORE).
       3. Supprime les entrées DB dont le fichier n'existe plus sur disque.
+      4. Si reset=True, remet tous les played à 0.
 
     Convention nommage : {categorie}__{titre}.mp4
     La catégorie est extraite du préfixe avant __ ; "unknown" en cas d'absence.
@@ -412,6 +413,9 @@ def startup_init_db() -> None:
                 "DELETE FROM videos WHERE filename = ?",
                 [(f,) for f in orphans],
             )
+
+        if reset:
+            conn.execute("UPDATE videos SET played = 0")
 
         conn.commit()
     finally:
@@ -542,7 +546,7 @@ state = ServerState()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialise la DB au démarrage, libère les ressources à l'arrêt."""
-    startup_init_db()
+    startup_init_db(reset=bool(os.environ.get("RESET_PLAYED")))
     yield
 
 
